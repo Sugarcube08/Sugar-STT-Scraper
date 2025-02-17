@@ -23,9 +23,9 @@ Before running the script, make sure you have the following installed:
 
 To install the required Python libraries, you can use the provided `requirements.txt`:
 
-```bash
-pip install -r requirements.txt
-
+```
+pip install -r requirements.txt 
+```
 Installation 🔧
 
 1. Clone the repository:
@@ -33,28 +33,28 @@ Installation 🔧
 
 
 You can clone this repository using Git:
-
+```
 git clone https://github.com/sugarcube08/Sugar-STT-Scraper.git
 cd Sugar-STT-Scraper
-
+```
 2. Install dependencies:
 
 
 
 Install the necessary dependencies by running the following command in your terminal:
-
+```
 pip install -r requirements.txt
-
+```
 You also need to have ffmpeg installed on your system. You can install it from the FFmpeg official site or use a package manager.
 
 For Linux (Ubuntu):
-
+```
 sudo apt-get install ffmpeg
-
+```
 For macOS (using Homebrew):
-
+```
 brew install ffmpeg
-
+```
 For Windows, download the binaries from the FFmpeg website and add it to your system’s PATH.
 
 3. Usage 🖥️
@@ -62,9 +62,9 @@ For Windows, download the binaries from the FFmpeg website and add it to your sy
 
 
 To use the tool, run the script with Python:
-
+```
 python run.py
-
+```
 The script will guide you through several prompts:
 
 1. Dataset Type: Choose whether you are creating a new dataset or appending to an existing one.
