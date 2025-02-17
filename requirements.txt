@@ -1,0 +1,8 @@
+ffmpeg-python==4.5.2
+pydub==0.25.1
+speechrecognition==3.8.1
+tqdm==4.64.1
+shutil==1.0.0
+tempfile==1.0.0
+json==2.0.9
+logging==0.5.1.2
