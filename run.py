@@ -10,8 +10,6 @@ from pydub.effects import low_pass_filter
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm  # For progress bars
 
-
-
 def print_banner():
     banner = """
     ***************************************************************
@@ -22,7 +20,7 @@ def print_banner():
     ***************************************************************
     *                                                             *
     *   Sugar-STT-Scraper: Your ultimate Speech-to-Text tool      *
-    *   Harnessing Excellet technology for Dataset Prepration     *
+    *   Harnessing Excellent technology for Dataset Preparation    *
     *                                                             *
     ***************************************************************
 
@@ -31,7 +29,6 @@ def print_banner():
     ***************************************************************
     """
     print(banner)
-
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -207,6 +204,7 @@ def main():
         labels_file = os.path.join(dataset_folder, "labels.json")
         existing_labels = json.load(open(labels_file)) if os.path.exists(labels_file) else {}
 
+        # Get the highest chunk number in the existing dataset
         existing_files = [f for f in os.listdir(audio_folder) if f.endswith(".ogg")]
         start_index = max([int(f.split(".")[0]) for f in existing_files if f.split(".")[0].isdigit()], default=0) + 1
         logging.info(f"Appending to existing dataset at {dataset_folder}")
@@ -247,8 +245,11 @@ def main():
     parallel = input("Use parallel processing? (y for yes /n for no): ").strip().lower() == "y"
     transcriptions = transcribe_audio(audio_chunks, parallel)
 
-    # Move the audio chunks to the final folder
-    shutil.move(temp_folder, audio_folder)
+    # Move the audio chunks to the final folder (without subfolder)
+    for chunk_path, _ in audio_chunks:
+        shutil.move(chunk_path, audio_folder)
+
+    # Update the labels file with the new transcriptions
     existing_labels.update(transcriptions)
     json.dump(existing_labels, open(labels_file, "w"), indent=4)
 
