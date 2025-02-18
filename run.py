@@ -246,9 +246,10 @@ def main():
     parallel = input("Use parallel processing? (y for yes /n for no): ").strip().lower() == "y"
     transcriptions = transcribe_audio(audio_chunks, parallel)
 
-    # Move the audio chunks to the final folder (without subfolder)
+    # Move only the remaining (transcribed) chunks to the final audio folder
     for chunk_path, _ in audio_chunks:
-        shutil.move(chunk_path, audio_folder)
+        if os.path.exists(chunk_path):  # Only move if the chunk still exists
+            shutil.move(chunk_path, audio_folder)
 
     # Update the labels file with the new transcriptions
     existing_labels.update(transcriptions)
