@@ -136,16 +136,15 @@ License 📄
 This project is licensed under the MIT License - see the LICENSE file for details.
 
 
----
-
-Made with ❤️ by SugarCube08 (Harsh Raikwar)
 
 ---
 
+#Made with ❤️ by SugarCube.#
+---
+Feel free to customize the repository and use it for your own bulk audio volume adjustments! 😄🎶
+
+---
 ## ☕ Support Me
-If you like this project, consider buying me
- a coffee!
-[![Buy Me a Coffee](https://img.shields.io/b
-adge/Buy%20Me%20a%20Coffee-Support%20Me-orange?style=flat-square&logo=buy-me-a-coffee)](https://www.buymeacoffee.com/sugarcube08)
-
-
+If you like this project, consider buying me a coffee!
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20Me-orange?style=flat-square&logo=buy-me-a-coffee)](https://www.buymeacoffee.com/sugarcube08)
+---
