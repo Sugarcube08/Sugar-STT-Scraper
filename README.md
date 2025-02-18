@@ -179,14 +179,12 @@ Total Chunks in Folder: 98
 
 Missing Chunks (in labels.json but not in folder):
   - 23.ogg
-  - 45.ogg
-
+  - 45.ogg 
 ``
 
 OR
 
 ``
-
 Total Entries in labels.json: 50
 Total Chunks in Folder: 55
 ⚠ More chunks in folder! 5 extra chunks.
@@ -194,17 +192,14 @@ Total Chunks in Folder: 55
 Extra Chunks (in folder but not in labels.json):
   - 102.ogg
   - 105.ogg
-
 ``
 
 OR
 
 ``
-
 Total Entries in labels.json: 75
 Total Chunks in Folder: 75
 ✅ Equal number of chunks in labels.json and folder.
-
 ``
 
 
