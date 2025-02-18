@@ -20,11 +20,12 @@ def print_banner():
     ***************************************************************
     *                                                             *
     *   Sugar-STT-Scraper: Your ultimate Speech-to-Text tool      *
-    *   Harnessing Excellent technology for Dataset Preparation    *
+    *   Harnessing Excellent technology for Dataset Preparation   *
     *                                                             *
     ***************************************************************
 
       Let's unlock the power of speech and transform it into text!
+        If you liked my Project Consider buying me a coffee ☕
 
     ***************************************************************
     """
