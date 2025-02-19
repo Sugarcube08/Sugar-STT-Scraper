@@ -176,6 +176,48 @@ def transcribe_audio(chunks, parallel=False):
 
     return labels
 
+def rename_and_update_labels(dataset_folder):
+    labels_file = os.path.join(dataset_folder, "labels.json")
+    audio_folder = os.path.join(dataset_folder, "audio")
+
+    # Load labels.json
+    if not os.path.exists(labels_file):
+        print("❌ Error: labels.json not found.")
+        return
+
+    with open(labels_file, "r") as f:
+        labels = json.load(f)
+
+    # Get sorted chunk filenames (numerical sorting)
+    chunks = sorted(
+        [f for f in os.listdir(audio_folder) if f.endswith(".ogg")],
+        key=lambda x: int(x.split(".")[0])  # Extract number part and sort
+    )
+
+    # Mapping of old filenames to new filenames
+    new_labels = {}
+
+    print("\n🔄 Starting Sequential Renaming...")
+
+    for index, old_name in enumerate(chunks, start=1):
+        new_name = f"{index}.ogg"
+        old_path = os.path.join(audio_folder, old_name)
+        new_path = os.path.join(audio_folder, new_name)
+
+        # Rename only if necessary
+        if old_name != new_name:
+            os.rename(old_path, new_path)
+            print(f"✅ Renamed: {old_name} → {new_name}")
+
+        # Store correct mapping
+        new_labels[new_name] = labels.pop(old_name, None)  # Move label data
+
+    # Save updated labels.json
+    with open(labels_file, "w") as f:
+        json.dump(new_labels, f, indent=4)
+
+    print("\n✅ Sequential renaming & labels update completed!")
+
 # Main function
 def main():
     print_banner()
@@ -227,7 +269,7 @@ def main():
         gain_db = float(input("Enter gain in dB (e.g., 5 for 5dB increase): ").strip())
 
     extracted_audio = os.path.join(dataset_folder, "temp.wav")
-    if input_path.lower().endswith((".mp4", ".mkv", ".avi", ".mov")):
+    if input_path.lower().endswith((".mp4", ".mkv", ".avi", ".mov", ".m4a")):
         extract_audio(input_path, extracted_audio)
     else:
         shutil.copy(input_path, extracted_audio)
@@ -245,7 +287,7 @@ def main():
 
     parallel = input("Use parallel processing? (y for yes /n for no): ").strip().lower() == "y"
     transcriptions = transcribe_audio(audio_chunks, parallel)
-
+    
     # Move only the remaining (transcribed) chunks to the final audio folder
     for chunk_path, _ in audio_chunks:
         if os.path.exists(chunk_path):  # Only move if the chunk still exists
@@ -255,6 +297,7 @@ def main():
     existing_labels.update(transcriptions)
     json.dump(existing_labels, open(labels_file, "w"), indent=4)
 
+    rename_and_update_labels(dataset_folder)
     logging.info(f"Dataset updated successfully in '{dataset_folder}'.")
 
 if __name__ == "__main__":

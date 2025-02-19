@@ -1,6 +1,7 @@
 # Sugar-STT-Scraper 🎤🔤
 with
-# 🔍 Verifier Program 
+# 🧹Dataset Cleaning Script
+
 
 **Sugar-STT-Scraper** is a powerful tool for transcribing speech from video and audio files into text. It leverages multiple technologies to enhance the audio quality, split long audio into smaller chunks, and transcribe the speech using Speech-to-Text (STT) models. The tool is specifically designed for preparing datasets for speech-to-text applications. 🧑‍💻💡
 
@@ -130,85 +131,70 @@ Dependencies: Ensure that ffmpeg, pydub, and other dependencies are properly ins
 
 
 
-Here's the README.md section for the Verifier Program, which you can append to the existing documentation for Sugar-STT-Scraper.
+
+# 🧹Dataset Cleaning Script
+
+This script helps you clean up unwanted audio chunks and their corresponding labels from the dataset.
 
 
 ---
 
-🔍 Verifier Program – Check Dataset Integrity
+✨ Features
 
-The Verifier Program ensures that all transcribed chunks listed in labels.json actually exist in the dataset folder. It helps identify missing and extra chunks, ensuring dataset consistency.
-
-🛠 How It Works
-
-Reads labels.json to get a list of expected audio chunks.
-
-Scans the audio/ folder to check actual .ogg files.
-
-Compares both lists and reports:
-
-✅ If the number of chunks matches.
-
-⚠ If chunks are missing (listed in labels.json but not in the folder).
-
-⚠ If there are extra chunks (exist in the folder but not in labels.json).
-
-
-
-📌 Usage
-
-1. Run the script
-```
-python verifier.py
-```
-
-2. Enter the dataset folder path when prompted.
-
-
-3. Check the output for missing or extra chunks.
-
-
-
-📊 Example Output
-
-
-```
-Total Entries in labels.json: 100
-Total Chunks in Folder: 98
-⚠ Less chunks in folder! 2 missing chunks.
-
-Missing Chunks (in labels.json but not in folder):
-  - 23.ogg
-  - 45.ogg 
-  ```
-
-OR
-
-```
-Total Entries in labels.json: 50
-Total Chunks in Folder: 55
-⚠ More chunks in folder! 5 extra chunks.
-
-Extra Chunks (in folder but not in labels.json):
-  - 102.ogg
-  - 105.ogg
-  ```
-
-OR
-
-```
-Total Entries in labels.json: 75
-Total Chunks in Folder: 75
-✅ Equal number of chunks in labels.json and folder.
-```
-
-
-🔗 Integration with Sugar-STT-Scraper
-
-This verifier is a post-processing tool to ensure dataset quality after running Sugar-STT-Scraper. Run it before training to avoid missing data issues.
+✅ Lists available chunks 📜 (sorted sequentially)
+✅ Allows selective deletion 🗑️
+✅ Removes audio files 🎵 from the audio/ folder
+✅ Updates label.json 📝 automatically
 
 
 ---
+
+🚀 How to Use
+
+1️⃣ Run the script:
+```
+python clean_dataset.py
+```
+2️⃣ Enter the dataset folder path 📂 when prompted
+3️⃣ View the list of available chunks 🔢
+4️⃣ Enter chunk numbers to delete (comma-separated) ❌
+5️⃣ The script will:
+
+🚮 Delete the selected chunks
+
+✏️ Remove their labels from label.json
+
+✅ Confirm cleanup success
+
+
+
+---
+
+📝 Example Usage
+```
+Enter dataset path: /path/to/dataset
+📜 Available Chunks:
+1  2  3  5  6  8  9
+
+Enter chunk numbers to remove (comma-separated): 3,8
+✅ Removed: 3.ogg
+📝 Removed label entry for 3.ogg
+✅ Removed: 8.ogg
+📝 Removed label entry for 8.ogg
+
+🎉 Cleanup complete! 2 files removed.
+
+```
+---
+
+📂 Folder Structure
+```
+/dataset
+ ├── audio/ 🎵       # Folder containing .ogg chunks
+ ├── label.json 📝    # File storing chunk labels
+```
+Happy cleaning! 🧹😃
+
 
 
 Contributing 🤝
