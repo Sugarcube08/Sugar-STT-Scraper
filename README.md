@@ -208,7 +208,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 
 ---
-# Made with ❤️ by SugarCube.
+## Made with ❤️ by SugarCube.
 ---
 Feel free to customize the repository and use it for your own bulk audio volume adjustments! 😄🎶
 
