@@ -4,7 +4,7 @@ import tempfile
 import shutil
 import logging
 import speech_recognition as sr
-import ffmpeg
+import subprocess  # Import subprocess for running ffmpeg commands
 from pydub import AudioSegment, silence
 from pydub.effects import low_pass_filter
 from concurrent.futures import ThreadPoolExecutor
@@ -41,10 +41,23 @@ def extract_audio(video_path, output_audio_path):
     logging.info(f"Extracting audio from {video_path}...")
 
     try:
-        ffmpeg.input(video_path).output(output_audio_path, format="wav", acodec="pcm_s16le", ac=1, ar="16000").run(overwrite_output=True)
+        # Use ffmpeg command-line to extract audio
+        cmd = [
+            'ffmpeg',
+            '-i', video_path,
+            '-acodec', 'pcm_s16le',
+            '-ar', '16000',
+            '-ac', '1',
+            output_audio_path
+        ]
+        subprocess.run(cmd, check=True)
         logging.info(f"Audio extracted: {output_audio_path}")
+    except subprocess.CalledProcessError as e:
+        # Log the error message from ffmpeg
+        logging.error(f"Error during audio extraction: {e.stderr.decode('utf-8')}")
     except Exception as e:
-        logging.error(f"Error during audio extraction: {e}")
+        # Log any unexpected errors
+        logging.error(f"Unexpected error during audio extraction: {e}")
 
 # Function to enhance audio and reduce noise (using pydub low-pass filter)
 def enhance_audio(input_path, output_path):
@@ -274,6 +287,10 @@ def main():
     else:
         shutil.copy(input_path, extracted_audio)
 
+    if not os.path.exists(extracted_audio):
+        logging.error(f"Extracted audio file not found: {extracted_audio}")
+        return
+
     enhanced_audio = enhance_audio(extracted_audio, extracted_audio)
 
     # Increase volume if required
@@ -282,23 +299,30 @@ def main():
 
     adjusted_audio = adjust_speed(enhanced_audio, extracted_audio, speed_factor)
 
-    temp_folder = tempfile.mkdtemp()
-    audio_chunks = split_audio(adjusted_audio, temp_folder, start_index)
+    # Create a temporary directory for audio chunks
+    temp_folder = tempfile.mkdtemp(dir=os.getcwd())  # Create in current working directory
+    try:
+        audio_chunks = split_audio(adjusted_audio, temp_folder, start_index)
 
-    parallel = input("Use parallel processing? (y for yes /n for no): ").strip().lower() == "y"
-    transcriptions = transcribe_audio(audio_chunks, parallel)
-    
-    # Move only the remaining (transcribed) chunks to the final audio folder
-    for chunk_path, _ in audio_chunks:
-        if os.path.exists(chunk_path):  # Only move if the chunk still exists
-            shutil.move(chunk_path, audio_folder)
+        parallel = input("Use parallel processing? (y for yes /n for no): ").strip().lower() == "y"
+        transcriptions = transcribe_audio(audio_chunks, parallel)
 
-    # Update the labels file with the new transcriptions
-    existing_labels.update(transcriptions)
-    json.dump(existing_labels, open(labels_file, "w"), indent=4)
+        # Move only the remaining (transcribed) chunks to the final audio folder
+        for chunk_path, _ in audio_chunks:
+            if os.path.exists(chunk_path):  # Only move if the chunk still exists
+                shutil.move(chunk_path, audio_folder)
 
-    rename_and_update_labels(dataset_folder)
-    logging.info(f"Dataset updated successfully in '{dataset_folder}'.")
+        # Update the labels file with the new transcriptions
+        existing_labels.update(transcriptions)
+        json.dump(existing_labels, open(labels_file, "w"), indent=4)
+
+        rename_and_update_labels(dataset_folder)
+        logging.info(f"Dataset updated successfully in '{dataset_folder}'.")
+
+    finally:
+        # Clean up the temporary directory
+        shutil.rmtree(temp_folder)
+        logging.info(f"Temporary folder {temp_folder} removed.")
 
 if __name__ == "__main__":
     main()
