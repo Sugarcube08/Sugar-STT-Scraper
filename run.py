@@ -270,6 +270,7 @@ def main():
         return
 
     input_path = input("Enter the path of video/audio file: ").strip()
+    parallel = input("Use parallel processing? (y for yes /n for no): ").strip().lower() == "y"
 
     # Default speed factor to 1.0 (normal speed)
     speed_factor = input("Enter speed factor (1.0 = normal, <1.0 = slow, >1.0 = fast): ").strip() or "1.0"
@@ -282,7 +283,7 @@ def main():
         gain_db = float(input("Enter gain in dB (e.g., 5 for 5dB increase): ").strip())
 
     extracted_audio = os.path.join(dataset_folder, "temp.wav")
-    if input_path.lower().endswith((".mp4", ".mkv", ".avi", ".mov", ".m4a")):
+    if input_path.lower().endswith((".mp4",".mp3", ".mkv", ".avi", ".mov", ".m4a")):
         extract_audio(input_path, extracted_audio)
     else:
         shutil.copy(input_path, extracted_audio)
@@ -304,7 +305,6 @@ def main():
     try:
         audio_chunks = split_audio(adjusted_audio, temp_folder, start_index)
 
-        parallel = input("Use parallel processing? (y for yes /n for no): ").strip().lower() == "y"
         transcriptions = transcribe_audio(audio_chunks, parallel)
 
         # Move only the remaining (transcribed) chunks to the final audio folder
