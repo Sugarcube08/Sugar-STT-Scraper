@@ -4,11 +4,59 @@ import tempfile
 import shutil
 import logging
 import speech_recognition as sr
-import subprocess  # Import subprocess for running ffmpeg commands
+import subprocess 
 from pydub import AudioSegment, silence
 from pydub.effects import low_pass_filter
 from concurrent.futures import ThreadPoolExecutor
-from tqdm import tqdm  # For progress bars
+from tqdm import tqdm 
+import yt_dlp
+
+def download_audio(link, temp_folder):
+    """
+    Downloads the best-quality audio from the given link using yt_dlp and converts it to .wav format.
+
+    Args:
+        link (str): The URL of the audio/video to download.
+        temp_folder (str): The folder where the downloaded audio will be saved.
+
+    Returns:
+        str: The absolute path to the downloaded audio file in .wav format, or None if the download fails.
+    """
+    ydl_opts = {
+        'format': 'bestaudio/best',  # Download the best audio format available
+        'outtmpl': os.path.join(temp_folder, 'temp.%(ext)s'),  # Output template for the file
+        'restrictfilenames': True,  # Restrict filenames to ASCII characters
+        'noplaylist': True,  # Download only a single video, not a playlist
+        'nocheckcertificate': True,  # Do not check SSL certificates
+        'ignoreerrors': True,  # Ignore errors during the download process
+        'quiet': True,  # Suppress output
+        'logtostderr': False,  # Do not log to stderr
+        'no_warnings': True,  # Suppress warnings
+        'no_call_home': True,  # Do not send tracking information to YouTube
+        'no_color': True,  # Disable colored output
+        'postprocessors': [  # Post-process the downloaded file
+            {
+                'key': 'FFmpegExtractAudio',  # Extract audio using FFmpeg
+                'preferredcodec': 'wav',  # Convert to .wav format
+                'preferredquality': '192',  # Set audio quality (optional)
+            }
+        ]
+    }
+
+    try:
+        logging.info(f"Starting download from: {link}")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            result = ydl.extract_info(link, download=True)
+            if result:
+                downloaded_file = os.path.join(temp_folder, f"temp.wav")
+                logging.info(f"Download completed: {downloaded_file}")
+                return os.path.abspath(downloaded_file)
+            else:
+                logging.error("Download failed: No result returned by yt_dlp.")
+                return None
+    except Exception as e:
+        logging.error(f"An error occurred during download: {e}")
+        return None
 
 def print_banner():
     banner = """
@@ -31,17 +79,15 @@ def print_banner():
     """
     print(banner)
 
-# Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Function to extract audio from video
 def extract_audio(video_path, output_audio_path):
     output_dir = os.path.dirname(output_audio_path)
     os.makedirs(output_dir, exist_ok=True)
     logging.info(f"Extracting audio from {video_path}...")
 
     try:
-        # Use ffmpeg command-line to extract audio
+        
         cmd = [
             'ffmpeg',
             '-i', video_path,
@@ -53,30 +99,21 @@ def extract_audio(video_path, output_audio_path):
         subprocess.run(cmd, check=True)
         logging.info(f"Audio extracted: {output_audio_path}")
     except subprocess.CalledProcessError as e:
-        # Log the error message from ffmpeg
         logging.error(f"Error during audio extraction: {e.stderr.decode('utf-8')}")
     except Exception as e:
-        # Log any unexpected errors
         logging.error(f"Unexpected error during audio extraction: {e}")
 
-# Function to enhance audio and reduce noise (using pydub low-pass filter)
 def enhance_audio(input_path, output_path):
     logging.info(f"Enhancing audio: {input_path}")
     audio = AudioSegment.from_wav(input_path)
-
-    # Apply a low-pass filter to reduce high-frequency noise
-    reduced_noise_audio = low_pass_filter(audio, 3000)  # Reduce frequencies above 3000 Hz (adjust as needed)
-
+    reduced_noise_audio = low_pass_filter(audio, 3000) 
     reduced_noise_audio.export(output_path, format="wav")
     logging.info(f"Enhanced audio saved: {output_path}")
     return output_path
-
-# Function to adjust speed
 def adjust_speed(audio_path, output_path, speed_factor=1.0):
     if speed_factor == 1.0:
         logging.info(f"Speed factor is {speed_factor}, no speed adjustment needed for {audio_path}")
-        return audio_path  # No speed change needed
-
+        return audio_path 
     logging.info(f"Adjusting speed to {speed_factor}x for {audio_path}")
     audio = AudioSegment.from_wav(audio_path)
     adjusted_audio = audio.speedup(playback_speed=speed_factor)
@@ -85,16 +122,14 @@ def adjust_speed(audio_path, output_path, speed_factor=1.0):
     logging.info(f"Speed-adjusted audio saved: {output_path}")
     return output_path
 
-# Function to increase volume (in dB)
 def increase_volume(input_path, output_path, gain_db=5):
     logging.info(f"Increasing volume by {gain_db}dB for {input_path}")
     audio = AudioSegment.from_wav(input_path)
-    increased_audio = audio + gain_db  # Increase volume by gain_db dB
+    increased_audio = audio + gain_db 
     increased_audio.export(output_path, format="wav")
     logging.info(f"Volume increased audio saved: {output_path}")
     return output_path
 
-# Function to split audio into chunks (max 5 sec)
 def split_audio(audio_path, output_folder, start_index=1, max_duration=5000):
     logging.info(f"Splitting audio: {audio_path}")
     audio = AudioSegment.from_wav(audio_path)
@@ -115,16 +150,14 @@ def split_audio(audio_path, output_folder, start_index=1, max_duration=5000):
     os.makedirs(output_folder, exist_ok=True)
     chunk_paths = []
 
-    # Wrap this loop with tqdm to show progress bar
     for i, chunk in enumerate(tqdm(final_chunks, desc="Saving Chunks", unit="chunk"), start=start_index):
         chunk_path = os.path.join(output_folder, f"{i}.ogg")
-        chunk.export(chunk_path, format="ogg", codec="libopus")  # OGG for storage
-        chunk_paths.append((chunk_path, len(chunk) / 1000))  # Store duration in seconds
+        chunk.export(chunk_path, format="ogg", codec="libopus") 
+        chunk_paths.append((chunk_path, len(chunk) / 1000))
         logging.info(f"Saved chunk: {chunk_path}")
 
     return chunk_paths
 
-# Function to estimate word timestamps
 def estimate_word_timestamps(text, duration):
     words = text.split()
     if not words:
@@ -141,7 +174,6 @@ def estimate_word_timestamps(text, duration):
 
     return timestamps
 
-# Function to transcribe an individual chunk
 def transcribe_chunk(chunk_path, duration):
     recognizer = sr.Recognizer()
     logging.info(f"Transcribing: {chunk_path}")
@@ -162,11 +194,10 @@ def transcribe_chunk(chunk_path, duration):
                 word_timestamps = [{"error": "STT service unreachable"}]
                 logging.error("STT service unreachable")
 
-    os.remove(temp_wav.name)  # Delete temporary WAV file
+    os.remove(temp_wav.name) 
 
     return chunk_path, word_timestamps
 
-# Function to transcribe audio chunks (sequential or parallel)
 def transcribe_audio(chunks, parallel=False):
     labels = {}
 
@@ -174,7 +205,6 @@ def transcribe_audio(chunks, parallel=False):
         with ThreadPoolExecutor(max_workers=10) as executor:
             results = list(executor.map(lambda x: transcribe_chunk(*x), chunks))
     else:
-        # Wrap the loop with tqdm to show progress bar during transcription
         results = []
         for chunk in tqdm(chunks, desc="Transcribing Chunks", unit="chunk"):
             result = transcribe_chunk(*chunk)
@@ -184,7 +214,7 @@ def transcribe_audio(chunks, parallel=False):
         if word_timestamps:
             labels[os.path.basename(chunk_path)] = word_timestamps
         else:
-            os.remove(chunk_path)  # Delete failed chunks
+            os.remove(chunk_path)
             logging.info(f"Deleted untranscribed chunk: {chunk_path}")
 
     return labels
@@ -193,7 +223,6 @@ def rename_and_update_labels(dataset_folder):
     labels_file = os.path.join(dataset_folder, "labels.json")
     audio_folder = os.path.join(dataset_folder, "audio")
 
-    # Load labels.json
     if not os.path.exists(labels_file):
         print("❌ Error: labels.json not found.")
         return
@@ -201,13 +230,11 @@ def rename_and_update_labels(dataset_folder):
     with open(labels_file, "r") as f:
         labels = json.load(f)
 
-    # Get sorted chunk filenames (numerical sorting)
     chunks = sorted(
         [f for f in os.listdir(audio_folder) if f.endswith(".ogg")],
-        key=lambda x: int(x.split(".")[0])  # Extract number part and sort
+        key=lambda x: int(x.split(".")[0]) 
     )
 
-    # Mapping of old filenames to new filenames
     new_labels = {}
 
     print("\n🔄 Starting Sequential Renaming...")
@@ -217,28 +244,40 @@ def rename_and_update_labels(dataset_folder):
         old_path = os.path.join(audio_folder, old_name)
         new_path = os.path.join(audio_folder, new_name)
 
-        # Rename only if necessary
         if old_name != new_name:
             os.rename(old_path, new_path)
             print(f"✅ Renamed: {old_name} → {new_name}")
 
-        # Store correct mapping
-        new_labels[new_name] = labels.pop(old_name, None)  # Move label data
+        new_labels[new_name] = labels.pop(old_name, None) 
 
-    # Save updated labels.json
     with open(labels_file, "w") as f:
         json.dump(new_labels, f, indent=4)
 
     print("\n✅ Sequential renaming & labels update completed!")
+    
 
-# Main function
 def main():
     print_banner()
     dataset_type = input("Choose dataset type (1: Training, 2: Testing): ").strip()
     dataset_name = "training" if dataset_type == "1" else "testing"
-
     dataset_mode = input("Choose mode (1: Create New, 2: Append Existing): ").strip()
+    input_mode = input("Choose input mode (1: Local files, 2: Youtube URLs): ").strip()
+    temp_folder = tempfile.mkdtemp(dir=os.getcwd())
+    
+    if input_mode == "1":
+        input_path = input("Enter the path of video/audio file: ").strip()
+    elif input_mode == "2":
+        url = input("Enter the youtube url: ").strip()      
+        input_path = download_audio(url, temp_folder)
+    else: 
+        print("Invalid input mode. Exiting.")
+        return
 
+    # Correct placement of speed_factor
+    speed_factor = input("Enter speed factor (1.0 = normal, <1.0 = slow, >1.0 = fast): ").strip() or "1.0"
+    speed_factor = float(speed_factor)
+    parallel = input("Use parallel processing? (y for yes /n for no): ").strip().lower() == "y"
+    
     if dataset_mode == "1":
         output_path = input("Enter output path (leave blank for current folder): ").strip() or os.getcwd()
         dataset_folder = os.path.join(output_path, f"{dataset_name}_dataset")
@@ -260,7 +299,6 @@ def main():
         labels_file = os.path.join(dataset_folder, "labels.json")
         existing_labels = json.load(open(labels_file)) if os.path.exists(labels_file) else {}
 
-        # Get the highest chunk number in the existing dataset
         existing_files = [f for f in os.listdir(audio_folder) if f.endswith(".ogg")]
         start_index = max([int(f.split(".")[0]) for f in existing_files if f.split(".")[0].isdigit()], default=0) + 1
         logging.info(f"Appending to existing dataset at {dataset_folder}")
@@ -269,21 +307,13 @@ def main():
         logging.error("Invalid choice. Exiting.")
         return
 
-    input_path = input("Enter the path of video/audio file: ").strip()
-    parallel = input("Use parallel processing? (y for yes /n for no): ").strip().lower() == "y"
-
-    # Default speed factor to 1.0 (normal speed)
-    speed_factor = input("Enter speed factor (1.0 = normal, <1.0 = slow, >1.0 = fast): ").strip() or "1.0"
-    speed_factor = float(speed_factor)  # Convert to float
-
-    # New option for increasing volume
     increase_volume_choice = input("Do you want to increase the volume beyond original? (y for Yes / n for No): ").strip().lower() or "n"
     gain_db = 0
     if increase_volume_choice == "y":
         gain_db = float(input("Enter gain in dB (e.g., 5 for 5dB increase): ").strip())
 
     extracted_audio = os.path.join(dataset_folder, "temp.wav")
-    if input_path.lower().endswith((".mp4",".mp3", ".mkv", ".avi", ".mov", ".m4a")):
+    if input_path.lower().endswith((".mp4", ".mp3", ".mkv", ".avi", ".mov", ".m4a")):
         extract_audio(input_path, extracted_audio)
     else:
         shutil.copy(input_path, extracted_audio)
@@ -294,25 +324,20 @@ def main():
 
     enhanced_audio = enhance_audio(extracted_audio, extracted_audio)
 
-    # Increase volume if required
     if gain_db > 0:
         enhanced_audio = increase_volume(enhanced_audio, extracted_audio, gain_db)
 
     adjusted_audio = adjust_speed(enhanced_audio, extracted_audio, speed_factor)
-
-    # Create a temporary directory for audio chunks
-    temp_folder = tempfile.mkdtemp(dir=os.getcwd())  # Create in current working directory
+   
     try:
         audio_chunks = split_audio(adjusted_audio, temp_folder, start_index)
 
         transcriptions = transcribe_audio(audio_chunks, parallel)
 
-        # Move only the remaining (transcribed) chunks to the final audio folder
         for chunk_path, _ in audio_chunks:
-            if os.path.exists(chunk_path):  # Only move if the chunk still exists
+            if os.path.exists(chunk_path):
                 shutil.move(chunk_path, audio_folder)
 
-        # Update the labels file with the new transcriptions
         existing_labels.update(transcriptions)
         json.dump(existing_labels, open(labels_file, "w"), indent=4)
 
@@ -320,7 +345,6 @@ def main():
         logging.info(f"Dataset updated successfully in '{dataset_folder}'.")
 
     finally:
-        # Clean up the temporary directory
         shutil.rmtree(temp_folder)
         logging.info(f"Temporary folder {temp_folder} removed.")
 
