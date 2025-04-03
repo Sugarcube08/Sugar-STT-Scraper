@@ -10,7 +10,31 @@ from pydub.effects import low_pass_filter
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm 
 import yt_dlp
+import csv
+import pandas as pd
 
+
+def print_banner():
+    banner = """
+    ***************************************************************
+    *                                                             *
+    *                   Welcome to Sugar-STT-Scraper              *
+    *             Powered by SugarCube08 (Harsh Raikwar)          *
+    *                                                             *
+    ***************************************************************
+    *                                                             *
+    *   Sugar-STT-Scraper: Your ultimate Speech-to-Text tool      *
+    *   Harnessing Excellent technology for Dataset Preparation   *
+    *                                                             *
+    ***************************************************************
+
+      Let's unlock the power of speech and transform it into text!
+        If you liked my Project Consider buying me a coffee ☕
+
+    ***************************************************************
+    """
+    print(banner)
+    
 def download_audio(link, temp_folder):
     """
     Downloads the best-quality audio from the given link using yt_dlp and converts it to .wav format.
@@ -58,28 +82,8 @@ def download_audio(link, temp_folder):
         logging.error(f"An error occurred during download: {e}")
         return None
 
-def print_banner():
-    banner = """
-    ***************************************************************
-    *                                                             *
-    *                   Welcome to Sugar-STT-Scraper              *
-    *             Powered by SugarCube08 (Harsh Raikwar)          *
-    *                                                             *
-    ***************************************************************
-    *                                                             *
-    *   Sugar-STT-Scraper: Your ultimate Speech-to-Text tool      *
-    *   Harnessing Excellent technology for Dataset Preparation   *
-    *                                                             *
-    ***************************************************************
-
-      Let's unlock the power of speech and transform it into text!
-        If you liked my Project Consider buying me a coffee ☕
-
-    ***************************************************************
-    """
-    print(banner)
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
 
 def extract_audio(video_path, output_audio_path):
     output_dir = os.path.dirname(output_audio_path)
@@ -133,7 +137,7 @@ def increase_volume(input_path, output_path, gain_db=5):
 def split_audio(audio_path, output_folder, start_index=1, max_duration=5000):
     logging.info(f"Splitting audio: {audio_path}")
     audio = AudioSegment.from_wav(audio_path)
-    chunks = silence.split_on_silence(audio, min_silence_len=500, silence_thresh=audio.dBFS - 14)
+    chunks = silence.split_on_silence(audio, min_silence_len=200, silence_thresh=audio.dBFS - 14)
 
     final_chunks = []
     temp_chunk = AudioSegment.silent(duration=0)
@@ -219,6 +223,24 @@ def transcribe_audio(chunks, parallel=False):
 
     return labels
 
+def csv_labels(label_file, dataset_folder):
+
+    labels_csv_path = os.path.join(dataset_folder, "labels.csv")
+
+    print("Creating labels.csv file...")
+    data = []
+    for chunk, words in label_file.items():
+        for word_info in words:
+            data.append({
+                "Chunk": chunk,
+                "Word": word_info["word"],
+                "Start Time": word_info["start"],
+                "End Time": word_info["end"]
+            })
+    df = pd.DataFrame(data, columns=["Chunk", "Word", "Start Time", "End Time"])
+    df.to_csv(labels_csv_path, index=False)
+    print("✅ labels.csv file created successfully!")
+
 def rename_and_update_labels(dataset_folder):
     labels_file = os.path.join(dataset_folder, "labels.json")
     audio_folder = os.path.join(dataset_folder, "audio")
@@ -237,33 +259,15 @@ def rename_and_update_labels(dataset_folder):
 
     new_labels = {}
 
-    print("\n🔄 Starting Sequential Renaming...")
-
-    for index, old_name in enumerate(chunks, start=1):
-        new_name = f"{index}.ogg"
-        old_path = os.path.join(audio_folder, old_name)
-        new_path = os.path.join(audio_folder, new_name)
-
-        if old_name != new_name:
-            os.rename(old_path, new_path)
-            print(f"✅ Renamed: {old_name} → {new_name}")
-
-        new_labels[new_name] = labels.pop(old_name, None) 
-
-    with open(labels_file, "w") as f:
-        json.dump(new_labels, f, indent=4)
-
-    print("\n✅ Sequential renaming & labels update completed!")
-    
-
 def main():
     print_banner()
     dataset_type = input("Choose dataset type (1: Training, 2: Testing): ").strip()
     dataset_name = "training" if dataset_type == "1" else "testing"
     dataset_mode = input("Choose mode (1: Create New, 2: Append Existing): ").strip()
     input_mode = input("Choose input mode (1: Local files, 2: Youtube URLs): ").strip()
-    temp_folder = tempfile.mkdtemp(dir=os.getcwd())
-    
+    temp_folder = os.path.abspath("temp")
+    os.makedirs(temp_folder, exist_ok=True)
+        
     if input_mode == "1":
         input_path = input("Enter the path of video/audio file: ").strip()
     elif input_mode == "2":
@@ -272,8 +276,7 @@ def main():
     else: 
         print("Invalid input mode. Exiting.")
         return
-
-    # Correct placement of speed_factor
+  
     speed_factor = input("Enter speed factor (1.0 = normal, <1.0 = slow, >1.0 = fast): ").strip() or "1.0"
     speed_factor = float(speed_factor)
     parallel = input("Use parallel processing? (y for yes /n for no): ").strip().lower() == "y"
@@ -342,6 +345,7 @@ def main():
         json.dump(existing_labels, open(labels_file, "w"), indent=4)
 
         rename_and_update_labels(dataset_folder)
+        csv_labels(existing_labels, dataset_folder)
         logging.info(f"Dataset updated successfully in '{dataset_folder}'.")
 
     finally:

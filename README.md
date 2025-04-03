@@ -15,6 +15,26 @@ with
 - 📁 Allows **dataset creation** and **appending to existing datasets**.
 - 🔽 Provides **progress bars** and **logs** for better tracking.
 
+## ✨ New Feature Update ✨
+- Now you have 2 modes to choose from(Updated on 03-04-2025): 
+  - 1. Local file mode: if you have video or audio
+  - 2. Youtube Url mode: if you want to use Youtube video as input and make data set out of it.
+
+- Now You have dual label file,
+  - 1. labels.json
+  - 2. labels.csv
+
+
+## ✨ New Update ✨
+- Now you have 2 modes to choose from(Updated on 03-04-2025): 
+  - 1. Local file mode: if you have video or audio
+  - 2. Youtube Url mode: if you want to use Youtube video as input and make data set out of it.
+
+- Now You have dual label file(Updated on 04-04-2025)
+  - 1. labels.json
+  - 2. labels.csv
+
+
 ## Requirements ⚙️
 Before running the script, make sure you have the following installed:
 - **Python 3.7+** 🐍
@@ -128,13 +148,6 @@ Ensure the input files are compatible: The script supports common video and audi
 Audio file size: Large files can be resource-intensive. If running on a low-resource machine, consider adjusting parameters such as speed or using parallel processing for faster processing.
 
 Dependencies: Ensure that ffmpeg, pydub, and other dependencies are properly installed, as they are critical for the script’s functionality.
-
-## ✨ New Feature Update ✨
-- Now you have 2 modes to choose from(Updated on 03-04-2025): 
-  - 1. Local file mode: if you have video or audio
-  - 2. Youtube Url mode: if you want to use Youtube video as input and make data set out of it.
-
-
 
 
 # 🧹Dataset Cleaning Script
