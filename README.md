@@ -210,6 +210,7 @@ Enter chunk numbers to remove (comma-separated): 3,8
 /dataset
  ├── audio/ 🎵       # Folder containing .ogg chunks
  ├── label.json 📝    # File storing chunk labels
+ ├── labels.csv 📝    # File storing chunk labels in csv format
 ```
 Happy cleaning! 🧹😃
 
