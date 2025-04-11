@@ -135,70 +135,36 @@ def increase_volume(input_path, output_path, gain_db=5):
     return output_path
 
 def split_audio(audio_path, output_folder, start_index=1, max_duration=5000):
-    """
-    Splits the audio into smaller chunks based on silence and saves them to the output folder.
-    """
-    try:
-        logging.info(f"Splitting audio: {audio_path}")
-        audio = AudioSegment.from_wav(audio_path)
+    logging.info(f"Splitting audio: {audio_path}")
+    audio = AudioSegment.from_wav(audio_path)
+    chunks = silence.split_on_silence(audio,
+    min_silence_len=50,                  # shorter silence considered
+    silence_thresh=audio.dBFS - 16 )
 
-        # Ensure the audio file is valid
-        if len(audio) == 0:
-            raise ValueError("Audio file is empty or invalid.")
+    final_chunks = []
+    temp_chunk = AudioSegment.silent(duration=0)
 
-        # Split audio based on silence
-        chunks = silence.split_on_silence(
-            audio,
-            min_silence_len=50,  # Minimum silence length in ms
-            silence_thresh=audio.dBFS - 16  # Silence threshold
-        )
-
-        # Combine smaller chunks to meet max_duration
-        final_chunks = []
-        temp_chunk = AudioSegment.silent(duration=0)
-
-        for chunk in chunks:
-            if len(temp_chunk) + len(chunk) <= max_duration:
-                temp_chunk += chunk
-            else:
-                final_chunks.append(temp_chunk)
-                temp_chunk = chunk
-        if len(temp_chunk) > 0:
+    for chunk in chunks:
+        if len(temp_chunk) + len(chunk) <= max_duration:
+            temp_chunk += chunk
+        else:
             final_chunks.append(temp_chunk)
+            temp_chunk = chunk
+    if len(temp_chunk) > 0:
+        final_chunks.append(temp_chunk)
 
-        # Save chunks to the output folder
-        os.makedirs(output_folder, exist_ok=True)
-        chunk_paths = []
+    os.makedirs(output_folder, exist_ok=True)
+    chunk_paths = []
 
-        for i, chunk in enumerate(tqdm(final_chunks, desc="Saving Chunks", unit="chunk"), start=start_index):
-            chunk_path = os.path.join(output_folder, f"{i}.ogg")
-            chunk.export(chunk_path, format="ogg", codec="libopus")
-            chunk_paths.append((chunk_path, len(chunk) / 1000))
-            logging.info(f"Saved chunk: {chunk_path}")
+    for i, chunk in enumerate(tqdm(final_chunks, desc="Saving Chunks", unit="chunk"), start=start_index):
+        chunk_path = os.path.join(output_folder, f"{i}.ogg")
+        chunk.export(chunk_path, format="ogg", codec="libopus") 
+        chunk_paths.append((chunk_path, len(chunk) / 1000))
+        logging.info(f"Saved chunk: {chunk_path}")
 
-        return chunk_paths
+    return chunk_paths
 
-    except Exception as e:
-        logging.error(f"Error splitting audio: {e}")
-        return []
-
-def estimate_word_timestamps(text, duration):
-    words = text.split()
-    if not words:
-        return []
-
-    avg_word_duration = duration / len(words)
-    timestamps = []
-    start_time = 0.0
-
-    for word in words:
-        end_time = start_time + avg_word_duration
-        timestamps.append({"word": word, "start": round(start_time, 2), "end": round(end_time, 2)})
-        start_time = end_time
-
-    return timestamps
-
-def transcribe_chunk(chunk_path, duration):
+def transcribe_chunk(chunk_path):
     recognizer = sr.Recognizer()
     logging.info(f"Transcribing: {chunk_path}")
 
@@ -209,26 +175,28 @@ def transcribe_chunk(chunk_path, duration):
             audio = recognizer.record(source)
             try:
                 text = recognizer.recognize_google(audio)
+                logging.info(f"Transcription success: {text}")
                 return chunk_path, text
             except sr.UnknownValueError:
-                logging.warning(f"Google Speech Recognition could not understand audio: {chunk_path}")
+                logging.warning("Speech not recognized")
                 return chunk_path, None
-            except sr.RequestError as e:
-                logging.error(f"Could not request results from Google Speech Recognition service; {e}")
+            except sr.RequestError:
+                logging.error("STT service unreachable")
                 return chunk_path, None
             finally:
                 os.remove(temp_wav.name)
+
 
 def transcribe_audio(chunks, parallel=False):
     labels = {}
 
     if parallel:
         with ThreadPoolExecutor(max_workers=10) as executor:
-            results = list(executor.map(lambda x: transcribe_chunk(*x), chunks))
+            results = list(executor.map(lambda x: transcribe_chunk(x[0]), chunks))
     else:
         results = []
         for chunk in tqdm(chunks, desc="Transcribing Chunks", unit="chunk"):
-            result = transcribe_chunk(*chunk)
+            result = transcribe_chunk(chunk[0])  # Pass only the file path
             results.append(result)
 
     for chunk_path, text in results:
@@ -240,6 +208,7 @@ def transcribe_audio(chunks, parallel=False):
 
     return labels
 
+
 def csv_labels(label_file, dataset_folder):
     labels_csv_path = os.path.join(dataset_folder, "labels.csv")
 
@@ -250,7 +219,320 @@ def csv_labels(label_file, dataset_folder):
             "Chunk": chunk,
             "Transcription": text
         })
-
     df = pd.DataFrame(data, columns=["Chunk", "Transcription"])
     df.to_csv(labels_csv_path, index=False)
     print("✅ labels.csv file created successfully!")
+
+def rename_and_update_labels(dataset_folder):
+    """
+    Renames all audio files in the dataset folder to continuous numbering,
+    updates the labels.json file accordingly, and regenerates the labels.csv file.
+    """
+    labels_file = os.path.join(dataset_folder, "labels.json")
+    audio_folder = os.path.join(dataset_folder, "audio")
+    labels_csv_path = os.path.join(dataset_folder, "labels.csv")
+
+    if not os.path.exists(labels_file):
+        print("❌ Error: labels.json not found.")
+        return
+
+    if not os.path.exists(audio_folder):
+        print("❌ Error: audio folder not found.")
+        return
+
+    # Load existing labels
+    with open(labels_file, "r") as f:
+        labels = json.load(f)
+
+    # Get all audio files and sort them numerically
+    chunks = sorted(
+        [f for f in os.listdir(audio_folder) if f.endswith(".ogg")],
+        key=lambda x: int(x.split(".")[0]) if x.split(".")[0].isdigit() else float('inf')
+    )
+
+    new_labels = {}
+    for index, chunk in enumerate(chunks, start=1):
+        old_path = os.path.join(audio_folder, chunk)
+        new_name = f"{index}.ogg"
+        new_path = os.path.join(audio_folder, new_name)
+
+        # Rename the audio file
+        os.rename(old_path, new_path)
+
+        # Update the labels with the new name
+        if chunk in labels:
+            new_labels[new_name] = labels[chunk]
+
+    # Save the updated labels to the JSON file
+    with open(labels_file, "w") as f:
+        json.dump(new_labels, f, indent=4)
+
+    # Regenerate the labels.csv file
+    print("Updating labels.csv file...")
+    data = [{"Chunk": chunk, "Transcription": text} for chunk, text in new_labels.items()]
+
+    # Write the updated labels.csv
+    df = pd.DataFrame(data, columns=["Chunk", "Transcription"])
+    df.to_csv(labels_csv_path, index=False)
+    print("✅ Audio files renamed, labels.json and labels.csv updated successfully!")
+            
+def main():
+    print_banner()
+    dataset_type = input("Choose dataset type (1: Training, 2: Testing): ").strip()
+    dataset_name = "training" if dataset_type == "1" else "testing"
+    dataset_mode = input("Choose mode (1: Create New, 2: Append Existing): ").strip()
+    input_mode = input("Choose input mode (1: Local files, 2: Youtube URLs): ").strip()
+    temp_folder = os.path.abspath("temp")
+    os.makedirs(temp_folder, exist_ok=True)
+        
+    if input_mode == "1":
+        input_path = input("Enter the path of video/audio file: ").strip()
+    elif input_mode == "2":
+        url = input("Enter the youtube url: ").strip()      
+        input_path = download_audio(url, temp_folder)
+    else: 
+        print("Invalid input mode. Exiting.")
+        return
+  
+    speed_factor = input("Enter speed factor (1.0 = normal, <1.0 = slow, >1.0 = fast): ").strip() or "1.0"
+    speed_factor = float(speed_factor)
+    parallel = input("Use parallel processing? (y for yes /n for no): ").strip().lower() == "y"
+    
+    if dataset_mode == "1":
+        output_path = input("Enter output path (leave blank for current folder): ").strip() or os.getcwd()
+        dataset_folder = os.path.join(output_path, f"{dataset_name}_dataset")
+        audio_folder = os.path.join(dataset_folder, "audio")
+        os.makedirs(audio_folder, exist_ok=True)
+        labels_file = os.path.join(dataset_folder, "labels.json")
+        existing_labels = {}
+        start_index = 1
+        logging.info(f"Creating new dataset at {dataset_folder}")
+
+    elif dataset_mode == "2":
+        dataset_folder = input("Enter existing dataset folder path: ").strip()
+        audio_folder = os.path.join(dataset_folder, "audio")
+
+        if not os.path.exists(audio_folder):
+            logging.error("Audio folder not found.")
+            return
+
+        labels_file = os.path.join(dataset_folder, "labels.json")
+        existing_labels = json.load(open(labels_file)) if os.path.exists(labels_file) else {}
+
+        existing_files = [f for f in os.listdir(audio_folder) if f.endswith(".ogg")]
+        start_index = max([int(f.split(".")[0]) for f in existing_files if f.split(".")[0].isdigit()], default=0) + 1
+        logging.info(f"Appending to existing dataset at {dataset_folder}")
+
+    else:
+        logging.error("Invalid choice. Exiting.")
+        return
+
+    increase_volume_choice = input("Do you want to increase the volume beyond original? (y for Yes / n for No): ").strip().lower() or "n"
+    gain_db = 0
+    if increase_volume_choice == "y":
+        gain_db = float(input("Enter gain in dB (e.g., 5 for 5dB increase): ").strip())
+
+    extracted_audio = os.path.join(dataset_folder, "temp.wav")
+    if input_path.lower().endswith((".mp4", ".mp3", ".mkv", ".avi", ".mov", ".m4a")):
+        extract_audio(input_path, extracted_audio)
+    else:
+        shutil.copy(input_path, extracted_audio)
+
+    if not os.path.exists(extracted_audio):
+        logging.error(f"Extracted audio file not found: {extracted_audio}")
+        return
+
+    enhanced_audio = enhance_audio(extracted_audio, extracted_audio)
+
+    if gain_db > 0:
+        enhanced_audio = increase_volume(enhanced_audio, extracted_audio, gain_db)
+
+    adjusted_audio = adjust_speed(enhanced_audio, extracted_audio, speed_factor)
+   
+    try:
+        audio_chunks = split_audio(adjusted_audio, temp_folder, start_index)
+
+        transcriptions = transcribe_audio(audio_chunks, parallel)
+
+        for chunk_path, _ in audio_chunks:
+            if os.path.exists(chunk_path):
+                shutil.move(chunk_path, audio_folder)
+
+        existing_labels.update(transcriptions)
+        json.dump(existing_labels, open(labels_file, "w"), indent=4)
+
+        rename_and_update_labels(dataset_folder)
+        csv_labels(existing_labels, dataset_folder)
+        logging.info(f"Dataset updated successfully in '{dataset_folder}'.")
+
+    finally:
+        shutil.rmtree(temp_folder)
+        logging.info(f"Temporary folder {temp_folder} removed.")
+
+if __name__ == "__main__":
+    print_banner()
+    
+    dataset_type = input("Choose dataset type:-\n1: Common Dataset\n2: Saperated Dataset(Training & Testing)\nOr Leave Empty for Common Dataset\n>> ").strip() or "1"    
+    if dataset_type == "1":
+        dataset_name = "Common"
+        dataset_mode = input("Choose mode (1: Create New, 2: Append Existing): ").strip() or "1"
+        input_mode = input("Choose input mode (1: Local files, 2: Youtube URLs): ").strip() or "1"
+        temp_folder = os.path.abspath("temp")
+        os.makedirs(temp_folder, exist_ok=True)            
+        if input_mode == "1":
+            input_path = input("Enter the path of video/audio file: ").strip() or "1"
+        elif input_mode == "2":
+            url = input("Enter the youtube url: ").strip()      
+            input_path = download_audio(url, temp_folder)
+        else: 
+            print("Invalid input mode. Exiting.")               
+               
+        speed_factor = float(input("Enter speed factor (1.0 = normal, <1.0 = slow, >1.0 = fast): ").strip() or "1.0")
+        parallel = input("Use parallel processing? (y for yes /n for no): ").strip().lower() == "y"
+        
+        if dataset_mode == "1":
+            output_path = input("Enter output path (leave blank for current folder): ").strip() or os.getcwd()
+            dataset_folder = os.path.join(output_path, f"{dataset_name}_dataset")
+            audio_folder = os.path.join(dataset_folder, "audio")
+            os.makedirs(audio_folder, exist_ok=True)
+            labels_file = os.path.join(dataset_folder, "labels.json")
+            existing_labels = {}
+            start_index = 1
+            logging.info(f"Creating new dataset at {dataset_folder}")
+        
+        elif dataset_mode == "2":
+            dataset_folder = input("Enter existing dataset folder path: ").strip()
+            audio_folder = os.path.join(dataset_folder, "audio")
+
+            if not os.path.exists(audio_folder):
+                logging.error("Audio folder not found.")
+               
+
+            labels_file = os.path.join(dataset_folder, "labels.json")
+            existing_labels = json.load(open(labels_file)) if os.path.exists(labels_file) else {}
+
+            existing_files = [f for f in os.listdir(audio_folder) if f.endswith(".ogg")]
+            start_index = max([int(f.split(".")[0]) for f in existing_files if f.split(".")[0].isdigit()], default=0) + 1
+            logging.info(f"Appending to existing dataset at {dataset_folder}")
+
+        else:
+            logging.error("Invalid choice. Exiting.")
+           
+        increase_volume_choice = input("Do you want to increase the volume beyond original? (y for Yes / n for No): ").strip().lower() or "n"
+        gain_db = 0
+        if increase_volume_choice == "y":
+            gain_db = float(input("Enter gain in dB (e.g., 5 for 5dB increase): ").strip())
+
+        extracted_audio = os.path.join(dataset_folder, "temp.wav")
+        if input_path.lower().endswith((".mp4", ".mp3", ".mkv", ".avi", ".mov", ".m4a")):
+            extract_audio(input_path, extracted_audio)
+        else:
+            shutil.copy(input_path, extracted_audio)
+
+        if not os.path.exists(extracted_audio):
+            logging.error(f"Extracted audio file not found: {extracted_audio}")           
+
+        enhanced_audio = enhance_audio(extracted_audio, extracted_audio)
+        if gain_db > 0:
+            enhanced_audio = increase_volume(enhanced_audio, extracted_audio, gain_db)
+        adjusted_audio = adjust_speed(enhanced_audio, extracted_audio, speed_factor)    
+        try:
+            audio_chunks = split_audio(adjusted_audio, temp_folder, start_index)
+            transcriptions = transcribe_audio(audio_chunks, parallel)
+            for chunk_path, _ in audio_chunks:
+                if os.path.exists(chunk_path):
+                    shutil.move(chunk_path, audio_folder)
+            existing_labels.update(transcriptions)
+            json.dump(existing_labels, open(labels_file, "w"), indent=4)
+            rename_and_update_labels(dataset_folder)
+            csv_labels(existing_labels, dataset_folder)
+            logging.info(f"Dataset updated successfully in '{dataset_folder}'.")
+
+        finally:
+            shutil.rmtree(temp_folder)
+            logging.info(f"Temporary folder {temp_folder} removed.")
+    
+    elif dataset_type == "2":
+        dataset_name = "Separated_Dataset"
+        dataset_folder = input("Enter existing dataset folder path: ").strip() 
+        dataset_output_folder = input("Enter output folder path(or Leave Empty to save in Current Directory): ").strip() or "Saperated_Dataset"
+        algorithm = input("Choose algorithm\n1. K-Fold\n2. Random Split\n3. Stratified Split\n4. Stratified K-Fold\n>>> ").strip()
+        if algorithm == "1":
+            folds = int(input("Enter number of folds(Or Leave Empty for Default 10-Fold): ").strip() or "10")
+            algo.k_fold(dataset_folder,dataset_output_folder,folds)
+                       
+        elif algorithm != "1" & algorithm <= "4":
+            print("Funtions Under Development Please Wait for Future Updates\nSupport SugarCube to get the fuctions faster")
+        else :
+            print("Invalid choice. Exiting.")
+            
+    else:
+        print("Invalid choice. Exiting.")    
+    dataset_mode = input("Choose mode (1: Create New, 2: Append Existing): ").strip() or "1"
+    input_mode = input("Choose input mode (1: Local files, 2: Youtube URLs): ").strip() or "1"
+    temp_folder = os.path.abspath("temp")
+    os.makedirs(temp_folder, exist_ok=True)            
+    if input_mode == "1":
+        input_path = input("Enter the path of video/audio file: ").strip() or "1"
+    elif input_mode == "2":
+        url = input("Enter the youtube url: ").strip()      
+        input_path = download_audio(url, temp_folder)
+    else: 
+        print("Invalid input mode. Exiting.")               
+           
+    speed_factor = float(input("Enter speed factor (1.0 = normal, <1.0 = slow, >1.0 = fast): ").strip() or "1.0")
+    parallel = input("Use parallel processing? (y for yes /n for no): ").strip().lower() == "y"
+    
+    if dataset_mode == "1":
+        output_path = input("Enter output path (leave blank for current folder): ").strip() or os.getcwd()
+        dataset_folder = os.path.join(output_path, f"{dataset_name}_dataset")
+        audio_folder = os.path.join(dataset_folder, "audio")
+        os.makedirs(audio_folder, exist_ok=True)
+        labels_file = os.path.join(dataset_folder, "labels.json")
+        existing_labels = {}
+        start_index = 1
+        logging.info(f"Creating new dataset at {dataset_folder}")
+    
+    elif dataset_mode == "2":
+        dataset_folder = input("Enter existing dataset folder path: ").strip()
+        audio_folder = os.path.join(dataset_folder, "audio")
+        if not os.path.exists(audio_folder):
+            logging.error("Audio folder not found.")
+           
+        labels_file = os.path.join(dataset_folder, "labels.json")
+        existing_labels = json.load(open(labels_file)) if os.path.exists(labels_file) else {}
+        existing_files = [f for f in os.listdir(audio_folder) if f.endswith(".ogg")]
+        start_index = max([int(f.split(".")[0]) for f in existing_files if f.split(".")[0].isdigit()], default=0) + 1
+        logging.info(f"Appending to existing dataset at {dataset_folder}")
+    else:
+        logging.error("Invalid choice. Exiting.")
+       
+    increase_volume_choice = input("Do you want to increase the volume beyond original? (y for Yes / n for No): ").strip().lower() or "n"
+    gain_db = 0
+    if increase_volume_choice == "y":
+        gain_db = float(input("Enter gain in dB (e.g., 5 for 5dB increase): ").strip())
+    extracted_audio = os.path.join(dataset_folder, "temp.wav")
+    if input_path.lower().endswith((".mp4", ".mp3", ".mkv", ".avi", ".mov", ".m4a")):
+        extract_audio(input_path, extracted_audio)
+    else:
+        shutil.copy(input_path, extracted_audio)
+    if not os.path.exists(extracted_audio):
+        logging.error(f"Extracted audio file not found: {extracted_audio}")           
+    enhanced_audio = enhance_audio(extracted_audio, extracted_audio)
+    if gain_db > 0:
+        enhanced_audio = increase_volume(enhanced_audio, extracted_audio, gain_db)
+    adjusted_audio = adjust_speed(enhanced_audio, extracted_audio, speed_factor)    
+    try:
+        audio_chunks = split_audio(adjusted_audio, temp_folder, start_index)
+        transcriptions = transcribe_audio(audio_chunks, parallel)
+        for chunk_path, _ in audio_chunks:
+            if os.path.exists(chunk_path):
+                shutil.move(chunk_path, audio_folder)
+        existing_labels.update(transcriptions)
+        json.dump(existing_labels, open(labels_file, "w"), indent=4)
+        rename_and_update_labels(dataset_folder)
+        csv_labels(existing_labels, dataset_folder)
+        logging.info(f"Dataset updated successfully in '{dataset_folder}'.")
+    finally:
+        shutil.rmtree(temp_folder)
+        logging.info(f"Temporary folder {temp_folder} removed.")
