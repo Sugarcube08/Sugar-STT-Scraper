@@ -109,7 +109,7 @@ The script will guide you through several prompts:
 The script will generate a dataset folder that contains:
 - **Audio chunks** in the `audio/` subfolder.
 - **Dual label files:**
-  - `labels.json` with transcriptions and word-level timestamps for each chunk.
+  - `labels.json` with transcriptions for each chunk.
   - `labels.csv` for compatibility with spreadsheet tools.
 
 ---
