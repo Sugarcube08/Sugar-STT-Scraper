@@ -138,8 +138,8 @@ def split_audio(audio_path, output_folder, start_index=1, max_duration=5000):
     logging.info(f"Splitting audio: {audio_path}")
     audio = AudioSegment.from_wav(audio_path)
     chunks = silence.split_on_silence(audio,
-    min_silence_len=50,                  # shorter silence considered
-    silence_thresh=audio.dBFS - 16 )
+        min_silence_len=50,                  # shorter silence considered
+        silence_thresh=audio.dBFS - 16)
 
     final_chunks = []
     temp_chunk = AudioSegment.silent(duration=0)
@@ -157,8 +157,8 @@ def split_audio(audio_path, output_folder, start_index=1, max_duration=5000):
     chunk_paths = []
 
     for i, chunk in enumerate(tqdm(final_chunks, desc="Saving Chunks", unit="chunk"), start=start_index):
-        chunk_path = os.path.join(output_folder, f"{i}.ogg")
-        chunk.export(chunk_path, format="ogg", codec="libopus") 
+        chunk_path = os.path.join(output_folder, f"{i}.wav")
+        chunk.export(chunk_path, format="wav")  # Removed codec="libopus"
         chunk_paths.append((chunk_path, len(chunk) / 1000))
         logging.info(f"Saved chunk: {chunk_path}")
 
