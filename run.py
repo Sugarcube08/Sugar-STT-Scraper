@@ -157,8 +157,8 @@ def split_audio(audio_path, output_folder, start_index=1, max_duration=5000):
     chunk_paths = []
 
     for i, chunk in enumerate(tqdm(final_chunks, desc="Saving Chunks", unit="chunk"), start=start_index):
-        chunk_path = os.path.join(output_folder, f"{i}.wav")
-        chunk.export(chunk_path, format="wav")  # Removed codec="libopus"
+        chunk_path = os.path.join(output_folder, f"{i}.wav")  # Ensure .wav format
+        chunk.export(chunk_path, format="wav")  # Export as .wav
         chunk_paths.append((chunk_path, len(chunk) / 1000))
         logging.info(f"Saved chunk: {chunk_path}")
 
@@ -168,24 +168,18 @@ def transcribe_chunk(chunk_path):
     recognizer = sr.Recognizer()
     logging.info(f"Transcribing: {chunk_path}")
 
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_wav:
-        AudioSegment.from_file(chunk_path).export(temp_wav.name, format="wav")
-
-        with sr.AudioFile(temp_wav.name) as source:
-            audio = recognizer.record(source)
-            try:
-                text = recognizer.recognize_google(audio)
-                logging.info(f"Transcription success: {text}")
-                return chunk_path, text
-            except sr.UnknownValueError:
-                logging.warning("Speech not recognized")
-                return chunk_path, None
-            except sr.RequestError:
-                logging.error("STT service unreachable")
-                return chunk_path, None
-            finally:
-                os.remove(temp_wav.name)
-
+    with sr.AudioFile(chunk_path) as source:  # Directly use .wav file
+        audio = recognizer.record(source)
+        try:
+            text = recognizer.recognize_google(audio)
+            logging.info(f"Transcription success: {text}")
+            return chunk_path, text
+        except sr.UnknownValueError:
+            logging.warning("Speech not recognized")
+            return chunk_path, None
+        except sr.RequestError:
+            logging.error("STT service unreachable")
+            return chunk_path, None
 
 def transcribe_audio(chunks, parallel=False):
     labels = {}
@@ -235,6 +229,11 @@ def rename_and_update_labels(dataset_folder):
     if not os.path.exists(labels_file):
         print("❌ Error: labels.json not found.")
         return
+
+    if not os.path.exists(audio_folder):
+        print("❌ Error: audio folder not found.")
+        return
+        
 
     if not os.path.exists(audio_folder):
         print("❌ Error: audio folder not found.")
