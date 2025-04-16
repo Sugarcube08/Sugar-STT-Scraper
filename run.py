@@ -233,8 +233,7 @@ def rename_and_update_labels(dataset_folder):
     if not os.path.exists(audio_folder):
         print("❌ Error: audio folder not found.")
         return
-        print("❌ Error: labels.json not found.")
-        return
+        
 
     if not os.path.exists(audio_folder):
         print("❌ Error: audio folder not found.")
