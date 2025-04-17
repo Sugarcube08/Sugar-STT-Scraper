@@ -19,22 +19,26 @@ with
 - 🌐 **YouTube URL Support:** Download and process audio directly from YouTube videos.
 - 🔢 **K-Fold Dataset Splitting:** Automatically splits datasets into training and testing sets.
 - 🧹 **Dataset Cleaning Script:** Selectively delete audio chunks and update labels.
+- 🌍 **Multilingual Support:** Transcribe audio in multiple languages using Google's Speech-to-Text API.
+- 🔄 **Smart File Handling:** Automatically handles file naming conflicts during processing.
 
 ---
 
-## ✨ New Features (Updated on 04-04-2025) ✨
-1. **Dual Label Files:**
-   - Both `labels.json` and `labels.csv` are now generated for better usability.
-2. **Dataset Modes:**
-   - Local file mode: Process audio/video files directly.
-   - YouTube URL mode: Download and process audio from YouTube videos.
-3. **K-Fold Dataset Splitting:**
-   - Automatically split datasets into training and testing sets using K-Fold.
-4. **Audio Enhancements:**
-   - Low-pass filtering for noise reduction.
-   - Speed adjustment and volume increase options.
-5. **Parallel Processing:**
-   - Enable parallel transcription for faster processing.
+## ✨ New Features (Updated on 04-18-2025) ✨
+1. **Multilingual Support:**
+   - Support for multiple languages in transcription
+   - Uses Google's Speech-to-Text API with language code specification
+   - Handles non-ASCII characters in transcriptions
+2. **Improved File Handling:**
+   - Smart file conflict resolution
+   - Automatic renaming of duplicate files
+   - Prevents data loss during processing
+3. **Previous Features:**
+   - Dual Label Files (JSON and CSV)
+   - Dataset Modes (Local and YouTube)
+   - K-Fold Dataset Splitting
+   - Audio Enhancements
+   - Parallel Processing
 
 ---
 
@@ -140,28 +144,71 @@ This script helps you clean up unwanted audio chunks and their corresponding lab
 ---
 
 ## Example Usage
+
+### Basic Usage
 ```bash
+python run.py
+# Follow the prompts:
+Choose dataset type (1: Training, 2: Testing): 1
+Choose input mode (1: Local File, 2: YouTube URL): 1
+Enter input path: /path/to/video.mp4
+Enter language code (e.g., en-US, hi-IN, es-ES): hi-IN
+Enable parallel processing? (y/n): y
+```
+
+### Dataset Cleaning
+```bash
+python data_cleaner.py
+# Follow the prompts:
 Enter dataset path: /path/to/dataset
 📜 Available Chunks:
 1  2  3  5  6  8  9
 
 Enter chunk numbers to remove (comma-separated): 3,8
-✅ Removed: 3.ogg
-📝 Removed label entry for 3.ogg
-✅ Removed: 8.ogg
-📝 Removed label entry for 8.ogg
+✅ Removed: 3.wav
+📝 Removed label entry for 3.wav
+✅ Removed: 8.wav
+📝 Removed label entry for 8.wav
 
 🎉 Cleanup complete! 2 files removed.
 ```
+
+### Supported Language Codes
+Some commonly used language codes:
+- `en-US`: English (United States)
+- `hi-IN`: Hindi (India)
+- `es-ES`: Spanish (Spain)
+- `fr-FR`: French (France)
+- `de-DE`: German (Germany)
+- `ja-JP`: Japanese (Japan)
+- `ko-KR`: Korean (South Korea)
+- And many more...
 
 ---
 
 ## Folder Structure 📂
 ```
 /dataset
- ├── audio/ 🎵       # Folder containing .ogg chunks
- ├── labels.json 📝    # File storing chunk labels
- ├── labels.csv 📝    # File storing chunk labels in CSV format
+ ├── audio/ 🎵           # Folder containing .wav chunks
+ │   ├── 1.wav          # Original audio chunk
+ │   ├── 1_1.wav        # Renamed duplicate (if any)
+ │   └── ...
+ ├── labels.json 📝      # File storing chunk labels with language info
+ └── labels.csv 📝       # CSV format labels for easy viewing
+```
+
+### Label File Format
+```json
+{
+    "1.wav": {
+        "text": "Hello world",
+        "language": "en-US"
+    },
+    "2.wav": {
+        "text": "नमस्ते दुनिया",
+        "language": "hi-IN"
+    }
+}
 ```
 
 ---
