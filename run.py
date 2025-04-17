@@ -173,10 +173,11 @@ def transcribe_chunk(chunk_path,language_code=None):
         audio = recognizer.record(source)
         try:
             text = recognizer.recognize_google(audio, language=language_code)
-            logging.info(f"Transcription success: {text}")
             if language_code != 'en-US':
                 text = unidecode.unidecode(text)
-            
+                logging.info(f"Transcription success: {text}")
+            else:
+                logging.info(f"Transcription success: {text}")
             return chunk_path, text
         except sr.UnknownValueError:
             logging.warning("Speech not recognized")
@@ -189,7 +190,7 @@ def transcribe_audio(chunks, parallel=False, language_code=None):
     labels = {}
 
     if parallel:
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor() as executor:
             results = list(executor.map(lambda x: transcribe_chunk(x[0], language_code), chunks))
     else:
         results = []
@@ -199,7 +200,8 @@ def transcribe_audio(chunks, parallel=False, language_code=None):
 
     for chunk_path, text in results:
         if text:
-            labels[os.path.basename(chunk_path)] = text
+            chunk_name = os.path.basename(chunk_path)
+            labels[chunk_name] = text  # Just store the text directly
         else:
             os.remove(chunk_path)
             logging.info(f"Deleted untranscribed chunk: {chunk_path}")
@@ -208,18 +210,30 @@ def transcribe_audio(chunks, parallel=False, language_code=None):
 
 
 def csv_labels(label_file, dataset_folder):
+    labels_json_path = os.path.join(dataset_folder, "labels.json")
     labels_csv_path = os.path.join(dataset_folder, "labels.csv")
 
     print("Creating labels.csv file...")
+    # Read the JSON file
+    with open(labels_json_path, "r") as f:
+        labels = json.load(f)
+    
+    # Convert to DataFrame
     data = []
-    for chunk, text in label_file.items():
+    for chunk, text in labels.items():
         data.append({
             "Chunk": chunk,
             "Transcription": text
         })
-    df = pd.DataFrame(data, columns=["Chunk", "Transcription"])
+    
+    # Create DataFrame and sort numerically by chunk number
+    df = pd.DataFrame(data)
+    df['ChunkNum'] = df['Chunk'].str.replace('.wav', '').astype(int)
+    df.sort_values(by='ChunkNum', inplace=True)
+    df.drop('ChunkNum', axis=1, inplace=True)
     df.to_csv(labels_csv_path, index=False)
     print(" labels.csv file created successfully!")
+
 
 def rename_and_update_labels(dataset_folder):
     """
@@ -240,40 +254,52 @@ def rename_and_update_labels(dataset_folder):
        
     # Load existing labels
     with open(labels_file, "r") as f:
-        labels = json.load(f)
+        existing_labels = json.load(f)
 
-    # Get all audio files and sort them numerically
-    chunks = sorted(
-        [f for f in os.listdir(audio_folder) if f.endswith(".wav")],
-        key=lambda x: int(x.split(".")[0]) if x.split(".")[0].isdigit() else float('inf')
-    )
+    # Get list of audio files
+    audio_files = [f for f in os.listdir(audio_folder) if f.endswith('.wav')]
+    
+    # Find the highest existing number to start appending from there
+    existing_numbers = []
+    for filename in existing_labels.keys():
+        try:
+            num = int(filename.replace('.wav', ''))
+            existing_numbers.append(num)
+        except ValueError:
+            continue
+    
+    next_number = max(existing_numbers) + 1 if existing_numbers else 1
 
+    # Process new files
     new_labels = {}
-    for index, chunk in enumerate(chunks, start=1):
-        old_path = os.path.join(audio_folder, chunk)
-        new_name = f"{index}.wav"
-        new_path = os.path.join(audio_folder, new_name)
-
-        # Rename the audio file
-        os.rename(old_path, new_path)
-
-        # Update the labels with the new name
-        if chunk in labels:
-            new_labels[new_name] = labels[chunk]
-
-    # Save the updated labels to the JSON file
-    with open(labels_file, "w") as f:
-        json.dump(new_labels, f, indent=4)
-
-    # Regenerate the labels.csv file
-    print("Updating labels.csv file...")
-    data = [{"Chunk": chunk, "Transcription": text} for chunk, text in new_labels.items()]
-
-    # Write the updated labels.csv
-    df = pd.DataFrame(data, columns=["Chunk", "Transcription"])
-    df.to_csv(labels_csv_path, index=False)
-    print(" Audio files renamed, labels.json and labels.csv updated successfully!")
+    for audio_file in audio_files:
+        if audio_file not in existing_labels:
+            new_name = f"{next_number}.wav"
+            next_number += 1
             
+            # Rename the file
+            old_path = os.path.join(audio_folder, audio_file)
+            new_path = os.path.join(audio_folder, new_name)
+            os.rename(old_path, new_path)
+            
+            # Update labels
+            if audio_file in existing_labels:
+                new_labels[new_name] = existing_labels[audio_file]
+        else:
+            new_labels[audio_file] = existing_labels[audio_file]
+
+    # Merge existing and new labels
+    merged_labels = {**existing_labels, **new_labels}
+
+    # Save updated labels
+    with open(labels_file, "w") as f:
+        json.dump(merged_labels, f, indent=4)
+
+    # Update CSV file
+    csv_labels(merged_labels, dataset_folder)
+    print(" Audio files renamed, labels.json and labels.csv updated successfully!")
+
+
 def safe_move(src, dst):
     """
     Safely move a file to a destination, handling existing file conflicts.
@@ -405,9 +431,13 @@ if __name__ == "__main__":
                
 
             labels_file = os.path.join(dataset_folder, "labels.json")
-            existing_labels = json.load(open(labels_file)) if os.path.exists(labels_file) else {}
+            if os.path.exists(labels_file):
+                with open(labels_file, "r") as f:
+                    existing_labels = json.load(f)
+            else:
+                existing_labels = {}
 
-            existing_files = [f for f in os.listdir(audio_folder) if f.endswith(".ogg")]
+            existing_files = [f for f in os.listdir(audio_folder) if f.endswith(".wav")]
             start_index = max([int(f.split(".")[0]) for f in existing_files if f.split(".")[0].isdigit()], default=0) + 1
             logging.info(f"Appending to existing dataset at {dataset_folder}")
 
@@ -439,7 +469,8 @@ if __name__ == "__main__":
                 if os.path.exists(chunk_path):
                     safe_move(chunk_path, os.path.join(audio_folder, os.path.basename(chunk_path)))
             existing_labels.update(transcriptions)
-            json.dump(existing_labels, open(labels_file, "w"), indent=4)
+            with open(labels_file, "w") as f:
+                json.dump(existing_labels, f, indent=4)
             rename_and_update_labels(dataset_folder)
             csv_labels(existing_labels, dataset_folder)
             logging.info(f"Dataset updated successfully in '{dataset_folder}'.")
@@ -464,4 +495,3 @@ if __name__ == "__main__":
             
     else:
         print("Invalid choice. Exiting.")    
-    
