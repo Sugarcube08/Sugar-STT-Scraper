@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm 
 import yt_dlp
 import pandas as pd
+import unidecode
 from algorithms import algo
 
 
@@ -164,15 +165,18 @@ def split_audio(audio_path, output_folder, start_index=1, max_duration=5000):
 
     return chunk_paths
 
-def transcribe_chunk(chunk_path):
+def transcribe_chunk(chunk_path,language_code=None):
     recognizer = sr.Recognizer()
     logging.info(f"Transcribing: {chunk_path}")
 
     with sr.AudioFile(chunk_path) as source:  # Directly use .wav file
         audio = recognizer.record(source)
         try:
-            text = recognizer.recognize_google(audio)
+            text = recognizer.recognize_google(audio, language=language_code)
             logging.info(f"Transcription success: {text}")
+            if language_code != 'en-US':
+                text = unidecode.unidecode(text)
+            
             return chunk_path, text
         except sr.UnknownValueError:
             logging.warning("Speech not recognized")
@@ -181,16 +185,16 @@ def transcribe_chunk(chunk_path):
             logging.error("STT service unreachable")
             return chunk_path, None
 
-def transcribe_audio(chunks, parallel=False):
+def transcribe_audio(chunks, parallel=False, language_code=None):
     labels = {}
 
     if parallel:
         with ThreadPoolExecutor(max_workers=10) as executor:
-            results = list(executor.map(lambda x: transcribe_chunk(x[0]), chunks))
+            results = list(executor.map(lambda x: transcribe_chunk(x[0], language_code), chunks))
     else:
         results = []
         for chunk in tqdm(chunks, desc="Transcribing Chunks", unit="chunk"):
-            result = transcribe_chunk(chunk[0])  # Pass only the file path
+            result = transcribe_chunk(chunk[0], language_code)  
             results.append(result)
 
     for chunk_path, text in results:
@@ -288,99 +292,6 @@ def safe_move(src, dst):
     shutil.move(src, new_dst)
     return new_dst
 
-def main():
-    print_banner()
-    dataset_type = input("Choose dataset type (1: Training, 2: Testing): ").strip()
-    dataset_name = "training" if dataset_type == "1" else "testing"
-    dataset_mode = input("Choose mode (1: Create New, 2: Append Existing): ").strip()
-    input_mode = input("Choose input mode (1: Local files, 2: Youtube URLs): ").strip()
-    temp_folder = os.path.abspath("temp")
-    os.makedirs(temp_folder, exist_ok=True)
-        
-    if input_mode == "1":
-        input_path = input("Enter the path of video/audio file: ").strip()
-    elif input_mode == "2":
-        url = input("Enter the youtube url: ").strip()      
-        input_path = download_audio(url, temp_folder)
-    else: 
-        print("Invalid input mode. Exiting.")
-        return
-  
-    speed_factor = input("Enter speed factor (1.0 = normal, <1.0 = slow, >1.0 = fast): ").strip() or "1.0"
-    speed_factor = float(speed_factor)
-    parallel = input("Use parallel processing? (y for yes /n for no): ").strip().lower() == "y"
-    
-    if dataset_mode == "1":
-        output_path = input("Enter output path (leave blank for current folder): ").strip() or os.getcwd()
-        dataset_folder = os.path.join(output_path, f"{dataset_name}_dataset")
-        audio_folder = os.path.join(dataset_folder, "audio")
-        os.makedirs(audio_folder, exist_ok=True)
-        labels_file = os.path.join(dataset_folder, "labels.json")
-        existing_labels = {}
-        start_index = 1
-        logging.info(f"Creating new dataset at {dataset_folder}")
-
-    elif dataset_mode == "2":
-        dataset_folder = input("Enter existing dataset folder path: ").strip()
-        audio_folder = os.path.join(dataset_folder, "audio")
-
-        if not os.path.exists(audio_folder):
-            logging.error("Audio folder not found.")
-            return
-
-        labels_file = os.path.join(dataset_folder, "labels.json")
-        existing_labels = json.load(open(labels_file)) if os.path.exists(labels_file) else {}
-
-        existing_files = [f for f in os.listdir(audio_folder) if f.endswith(".ogg")]
-        start_index = max([int(f.split(".")[0]) for f in existing_files if f.split(".")[0].isdigit()], default=0) + 1
-        logging.info(f"Appending to existing dataset at {dataset_folder}")
-
-    else:
-        logging.error("Invalid choice. Exiting.")
-        return
-
-    increase_volume_choice = input("Do you want to increase the volume beyond original? (y for Yes / n for No): ").strip().lower() or "n"
-    gain_db = 0
-    if increase_volume_choice == "y":
-        gain_db = float(input("Enter gain in dB (e.g., 5 for 5dB increase): ").strip())
-
-    extracted_audio = os.path.join(dataset_folder, "temp.wav")
-    if input_path.lower().endswith((".mp4", ".mp3", ".mkv", ".avi", ".mov", ".m4a")):
-        extract_audio(input_path, extracted_audio)
-    else:
-        shutil.copy(input_path, extracted_audio)
-
-    if not os.path.exists(extracted_audio):
-        logging.error(f"Extracted audio file not found: {extracted_audio}")
-        return
-
-    enhanced_audio = enhance_audio(extracted_audio, extracted_audio)
-
-    if gain_db > 0:
-        enhanced_audio = increase_volume(enhanced_audio, extracted_audio, gain_db)
-
-    adjusted_audio = adjust_speed(enhanced_audio, extracted_audio, speed_factor)
-   
-    try:
-        audio_chunks = split_audio(adjusted_audio, temp_folder, start_index)
-
-        transcriptions = transcribe_audio(audio_chunks, parallel)
-
-        for chunk_path, _ in audio_chunks:
-            if os.path.exists(chunk_path):
-                safe_move(chunk_path, os.path.join(audio_folder, os.path.basename(chunk_path)))
-
-        existing_labels.update(transcriptions)
-        json.dump(existing_labels, open(labels_file, "w"), indent=4)
-
-        rename_and_update_labels(dataset_folder)
-        csv_labels(existing_labels, dataset_folder)
-        logging.info(f"Dataset updated successfully in '{dataset_folder}'.")
-
-    finally:
-        shutil.rmtree(temp_folder)
-        logging.info(f"Temporary folder {temp_folder} removed.")
-
 if __name__ == "__main__":
     print_banner()
     
@@ -399,6 +310,79 @@ if __name__ == "__main__":
         else: 
             print("Invalid input mode. Exiting.")               
                
+        lang_dict = {
+            "Afrikaans": "af-ZA",
+            "Standard-Arabic": "ar",
+            "Egypt": "ar-EG",
+            "Gulf": "ar-AE",
+            "Levantine": "ar-IL",
+            "Maghreb": "ar-MA",
+            "Modern Standard": "ar-001",
+            "Bengali": "bn-IN",
+            "Catalan": "ca-ES",
+            "Simplified Chinese": "zh-CN",
+            "Traditional Chinese": "zh-TW",
+            "Hong Kong Chinese": "zh-HK",
+            "Croatian": "hr-HR",
+            "Czech": "cs-CZ",
+            "Danish": "da-DK",
+            "Dutch": "nl-NL",
+            "Australia English": "en-AU",
+            "India English": "en-IN",
+            "Ireland English": "en-IE",
+            "New Zealand English": "en-NZ",
+            "Philippines English": "en-PH",
+            "Singapore English": "en-SG",
+            "South Africa English": "en-ZA",
+            "United Kingdom English": "en-GB",
+            "United States English": "en-US",
+            "Finnish": "fi-FI",
+            "Standard French": "fr-FR",
+            "Canadian French": "fr-CA",
+            "German": "de-DE",
+            "Greek": "el-GR",
+            "Gujarati": "gu-IN",
+            "Hindi": "hi-IN",
+            "Hungarian": "hu-HU",
+            "Icelandic": "is-IS",
+            "Italian": "it-IT",
+            "Japanese": "ja-JP",
+            "Kannada": "kn-IN",
+            "Korean": "ko-KR",
+            "Latvian": "lv-LV",
+            "Lithuanian": "lt-LT",
+            "Malay": "ms-MY",
+            "Marathi": "mr-IN",
+            "Nepali": "ne-IN",
+            "Norwegian": "no-NO",
+            "Polish": "pl-PL",
+            "Standard Portuguese": "pt-PT",
+            "Brazil Portuguese": "pt-BR",
+            "Romanian": "ro-RO",
+            "Russian": "ru-RU",
+            "Serbian": "sr-RS",
+            "Standard Spanish": "es-ES",
+            "Mexico Spanish": "es-MX",
+            "United States Spanish": "es-US",
+            "Swahili": "sw-KE",
+            "Swedish": "sv-SE",
+            "Tamil": "ta-IN",
+            "Telugu": "te-IN",
+            "Thai": "th-TH",
+            "Turkish": "tr-TR",
+            "Ukrainian": "uk-UA",
+            "Urdu": "ur-PK",
+            "Vietnamese": "vi-VN",
+            "Welsh": "cy-GB",
+            "Yiddish": "yi",
+        }
+        languages = list(lang_dict.keys())
+        language_codes = list(lang_dict.values())
+        print("Choose the language of The Content:")
+        for index, language in enumerate(languages, start=1):
+            print(f"{index}: {language}")
+        language_choice = int(input("Enter language number: ").strip())
+        language_code = language_codes[language_choice-1]
         speed_factor = float(input("Enter speed factor (1.0 = normal, <1.0 = slow, >1.0 = fast): ").strip() or "1.0")
         parallel = input("Use parallel processing? (y for yes /n for no): ").strip().lower() == "y"
         
@@ -450,7 +434,7 @@ if __name__ == "__main__":
         adjusted_audio = adjust_speed(enhanced_audio, extracted_audio, speed_factor)    
         try:
             audio_chunks = split_audio(adjusted_audio, temp_folder, start_index)
-            transcriptions = transcribe_audio(audio_chunks, parallel)
+            transcriptions = transcribe_audio(audio_chunks, parallel, language_code)
             for chunk_path, _ in audio_chunks:
                 if os.path.exists(chunk_path):
                     safe_move(chunk_path, os.path.join(audio_folder, os.path.basename(chunk_path)))
