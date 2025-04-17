@@ -22,19 +22,16 @@ def update_labels_csv(dataset_path, labels):
     labels_csv_path = os.path.join(dataset_path, "labels.csv")
     data = []
 
-    for chunk, words in labels.items():
-        for word_info in words:
-            data.append({
-                "Chunk": chunk,
-                "Word": word_info["word"],
-                "Start Time": word_info["start"],
-                "End Time": word_info["end"]
-            })
+    for chunk, text in labels.items():
+        data.append({
+            "Chunk": chunk,
+            "Transcription": text
+        })
 
     # Write the updated labels.csv
-    df = pd.DataFrame(data, columns=["Chunk", "Word", "Start Time", "End Time"])
+    df = pd.DataFrame(data)
     df.to_csv(labels_csv_path, index=False)
-    print(f"✅ Updated labels.csv at {labels_csv_path}")
+    print(" labels.csv file created successfully!")
 
 
 def auto_clean_dataset(dataset_path):
@@ -43,15 +40,15 @@ def auto_clean_dataset(dataset_path):
     """
     # Paths
     audio_folder = os.path.join(dataset_path, "audio")
-    label_path = os.path.join(dataset_path, "label.json")
+    labels_file = os.path.join(dataset_path, "labels.json")
 
     # Load labels
-    labels = load_labels(label_path)
+    labels = load_labels(labels_file)
 
     # List all audio chunks
     audio_chunks = sorted(
-        (f for f in os.listdir(audio_folder) if f.endswith(".ogg")),
-        key=lambda x: int(x.replace(".ogg", ""))
+        (f for f in os.listdir(audio_folder) if f.endswith(".wav")),
+        key=lambda x: int(x.split(".")[0]) if x.split(".")[0].isdigit() else float('inf')
     )
 
     if not audio_chunks:
@@ -89,7 +86,7 @@ def auto_clean_dataset(dataset_path):
             print(f"📝 Removed label entry for duplicate: {chunk}")
 
     # Save updated labels
-    save_labels(label_path, labels)
+    save_labels(labels_file, labels)
 
     # Update labels.csv
     update_labels_csv(dataset_path, labels)
@@ -98,41 +95,45 @@ def auto_clean_dataset(dataset_path):
 
 
 def clean_dataset(dataset_path):
-    """Remove selected chunks and update label.json and labels.csv"""
+    """Remove selected chunks and update labels.json and labels.csv"""
 
     # Paths
     audio_folder = os.path.join(dataset_path, "audio")
-    label_path = os.path.join(dataset_path, "label.json")
+    labels_file = os.path.join(dataset_path, "labels.json")
 
     # Load labels
-    labels = load_labels(label_path)
+    labels = load_labels(labels_file)
 
-    # List available chunks (sorted numerically)
-    available_chunks = sorted(
-        (f for f in os.listdir(audio_folder) if f.endswith(".ogg")),
-        key=lambda x: int(x.replace(".ogg", ""))
+    # List all audio chunks
+    audio_chunks = sorted(
+        (f for f in os.listdir(audio_folder) if f.endswith(".wav")),
+        key=lambda x: int(x.split(".")[0]) if x.split(".")[0].isdigit() else float('inf')
     )
 
-    if not available_chunks:
+    if not audio_chunks:
         print("No audio chunks found.")
         return
 
-    # Display available chunks
-    print("\nAvailable Chunks:\n")
-    print("  ".join(chunk.replace(".ogg", "") for chunk in available_chunks))
-    print("\n")
+    # Print all chunks and their transcriptions
+    print("\nCurrent chunks and transcriptions:")
+    for chunk in audio_chunks:
+        text = labels.get(chunk, "No transcription")
+        print(f"{chunk}: {text}")
 
-    # Get user input
-    chunk_numbers = input("Enter chunk numbers to remove (comma-separated): ").strip()
-    if not chunk_numbers:
-        print("No chunks specified. Exiting.")
+    # Get chunks to remove
+    to_remove = input("\nEnter chunk numbers to remove (comma-separated): ").strip()
+    if not to_remove:
+        print("No chunks selected for removal.")
         return
 
-    chunks_to_remove = {f"{num.strip()}.ogg" for num in chunk_numbers.split(",")}
-
-    # Process deletions
+    # Process each chunk
     removed_files = 0
-    for chunk in chunks_to_remove:
+    for chunk_num in to_remove.split(","):
+        chunk_num = chunk_num.strip()
+        if not chunk_num.isdigit():
+            continue
+
+        chunk = f"{chunk_num}.wav"
         chunk_path = os.path.join(audio_folder, chunk)
 
         # Remove file
@@ -141,33 +142,35 @@ def clean_dataset(dataset_path):
             removed_files += 1
             print(f"✅ Removed: {chunk}")
 
-        else:
-            print(f"⚠️ Not found: {chunk}")
-
         # Remove label entry
         if chunk in labels:
             del labels[chunk]
-            print(f"📝 Removed label entry for {chunk}")
+            print(f"📝 Removed label entry for: {chunk}")
+
+    if removed_files == 0:
+        print("No files were removed.")
+        return
 
     # Save updated labels
-    save_labels(label_path, labels)
+    save_labels(labels_file, labels)
 
     # Update labels.csv
     update_labels_csv(dataset_path, labels)
 
-    print(f"\n✅ Cleanup complete! {removed_files} files removed.")
+    print(f"\n✅ Clean complete! {removed_files} files removed.")
 
 
 # Example usage
 if __name__ == "__main__":
     dataset_path = input("Enter dataset path: ").strip()
-    if os.path.exists(dataset_path):
-        mode = input("Choose mode: (1) Manual Clean, (2) Auto Clean: ").strip()
-        if mode == "1":
-            clean_dataset(dataset_path)
-        elif mode == "2":
-            auto_clean_dataset(dataset_path)
-        else:
-            print("Invalid mode. Exiting.")
+    if not os.path.exists(dataset_path):
+        print("Error: Dataset path not found.")
+        exit(1)
+
+    mode = input("Choose mode (1: Manual clean, 2: Auto clean): ").strip()
+    if mode == "1":
+        clean_dataset(dataset_path)
+    elif mode == "2":
+        auto_clean_dataset(dataset_path)
     else:
-        print("Invalid path. Exiting.")
+        print("Invalid mode selected.")
